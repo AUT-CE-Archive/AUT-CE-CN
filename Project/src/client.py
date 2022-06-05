@@ -7,6 +7,7 @@ load_dotenv() # Load .env file
 
 HOST = os.getenv("HOST")
 PORT = int(os.getenv("PORT"))
+BUFFER_SIZE = int(os.getenv("BUFFER_SIZE"))
 
 
 class Client():
@@ -20,7 +21,7 @@ class Client():
             _socket.connect((HOST, PORT))
 
             # Send data to the server
-            _socket.sendall(b"Hello, world")
+            _socket.sendall(b"Hello, world!")
 
             # Receive data from the server and shut down
             data = _socket.recv(1024)
