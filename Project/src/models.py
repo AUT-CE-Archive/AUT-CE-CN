@@ -2,57 +2,78 @@ import socket
 import json
 from termcolor import colored
 
+from logger import logger
 
-class Message():
-    """
-        Message class
-    """
 
-    def __init__(self, msg: str, topic: str) -> None:
+class Base():
+
+    def __init__(self, data: dict) -> None:
         '''
             constructor
 
             parameters:
-                msg (str): the message
-                topic (str): the topic for the message
+                data (dict): the data used for the payload of the object
+        ''' 
+
+        self.payload = data
+    
+
+    def get(self, field: str) -> str:
+        return self.payload[field] if field in self.payload.keys() else None
+    
+
+    @property
+    def serialized(self) -> str:
+        """ Serialize the payload """
+        return json.dumps(self.payload)
+    
+    @property
+    def package(self) -> bytes:
+        """ Encode the serialized payload """
+        return f'{str(self.serialized)}\n'.encode()    
+
+
+
+class Message(Base):
+    def __init__(self, data: dict) -> None:
         '''
-
-        self.msg = msg
-        self.topic = topic 
-
-
-    @classmethod
-    def receive(cls, data: dict):
-        '''
-            Interpret the raw data and set the message and topic
+            constructor
 
             parameters:
-                raw_data (bytes): the raw data
+                data (dict): the data used for the payload of the object [message, topics]
         '''
+        super().__init__(data)
+    
 
-        return cls(data['msg'], data['topic'])
+    @classmethod
+    def initialize(cls, message: str, topic: str):
+        """
+            Overlaod the initialize method to construct the payload
+
+            parameters:
+                message (str): the emssage for the payload
+                topic (str): the topic for the payload's message
+        """
+
+        return cls({
+            'message': message,
+            'topic': topic,
+            'type': 'message'
+        })
 
 
+    @logger(on_success = f'{colored("succeess", "green")}\n', on_failure = f'{colored("failed", "red")}\n')
     def send(self, pid: int, socket: socket) -> None:
         '''
             Send the message to the given socket
 
             parameters:
-                socket (socket): the socket to send the message to
+                pid (int): the pid of the client
+                socket (socket): the socket to send the message to                
         '''
 
-        serialized = json.dumps({
-            'msg': self.msg,
-            'topic': self.topic
-        })
-        
-        print(f' - sending message to client {pid}', end = ': ')
-
-        try:
-            socket.sendall(f'{str(serialized)}\n'.encode())
-            print(f'{colored("succeess", "green")}')
-        except:
-            print(f'{colored("failed", "red")}')
+        print(f' - sending message to {pid}', end = ': ')
+        socket.sendall(self.package)
     
 
     def broadcast(self, clients: dict) -> None:
@@ -63,85 +84,48 @@ class Message():
                 clients (dict): the clients to broadcast to
         '''
 
-        for pid, socket in clients:
+        for pid, socket in clients:            
             self.send(pid, socket)
+
         print('')
 
 
 
+class Subscribe(Base):
 
-
-
-
-
-
-
-
-class Model():
-
-    def __init__(self, socket: socket.socket, address: str) -> None:
-        
-        self.socket = socket
-        self.address = address
+    def __init__(self, data: dict) -> None:
+        '''
+            Constructor
+            
+            parameters:
+                data (dict): the data used for the payload of the object [topics]
+        '''
+        super().__init__(data)
     
 
-    def json2str(self, data: str) -> str:
-        """ Convert the string to json """
-        
-        return json.loads(data)
-    
-    
-    def json_encode(self, data: str) -> str:
-        """ Convert the string from json """
-        
-        return json.dumps(data)
-    
+    @classmethod
+    def initialize(cls, topics: list):
+        """
+            Overlaod the initialize method to construct the payload
 
-    def json_decode(self, data: str) -> None:
-        """ Send JSON serialized data """
-        
-        self.socket.send(data.encode())
+            parameters:
+                topics (list): list of topics to subscribe to
+        """
+
+        return cls({
+            'topics': topics,
+            'type': 'subscribe'
+        })
     
 
-    def send(self, data: str) -> None:
-        """ Send data """
-        
-        self.socket.send(data.encode())
+    @logger(on_success = f'{colored("succeess", "green")}', on_failure = f'{colored("failed", "red")}')
+    def send(self, socket: socket) -> None:
+        '''
+            Send the message to the given socket
 
+            parameters:
+                socket (socket): the socket to send the message to
+        '''
 
-
-class Subscribe(Model):
-
-    def __init__(self, socket: socket.socket, address) -> None:
-        
-        super().__init__(socket, address)
-    
-
-    def send(self) -> None:
-        pass
-
-
-    def response_failure(self) -> None:
-        pass
-
-    def response_success(self) -> None:
-        pass
-
-
-
-class Pong(Model):
-
-    def __init__(self, socket: socket.socket, address) -> None:
-        
-        super().__init__(socket, address)
-
-        self.package = {
-            'type': 'Pong'
-        }
-
-
-    def response_failure(self) -> None:
-        pass
-
-    def response_success(self) -> None:
-        pass
+        print(f' - Subscribing on {", ".join(self.payload["topics"])}', end = ': ')
+        socket.sendall(self.package)

@@ -30,7 +30,7 @@ class Server():
 
         # Bind on the Host & Port, and start listening
         self._socket.bind((host, port))
-        print(f"{colored('server started.', 'blue')}: listening on {host}:{port}...")
+        print(f"{colored(f'server started (PID: {port})', 'blue')}: listening on {host}:{port}...")
         self.listen()        
     
 
@@ -72,7 +72,7 @@ class Server():
 
             if package != '':
                 data = json.loads(package)
-                print(f'client {pid} sent: "{data["msg"]}" (topic: "{data["topic"]}").')
+                print(f'client {pid}: {data}.')
 
                 self.broadcaster(pid, data)
 
@@ -87,10 +87,10 @@ class Server():
         """
 
         # Interpret the data
-        message = Message.receive(data)
+        message = Message(data)
 
         # list of client PIDs that are subscribed to the topic (except the sender himself)
-        subscribed_clients = [(pid, props['socket']) for pid, props in self.clients.items() if sender_pid != pid and message.topic in props['topics']]
+        subscribed_clients = [(pid, props['socket']) for pid, props in self.clients.items() if sender_pid != pid and message.get('topic') in props['topics']]
         print(f' - The following clients are subscribed to this topic: {[pid for pid, _ in subscribed_clients]}')
 
         # broadcast the message to all subscribed clients

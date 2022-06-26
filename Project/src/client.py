@@ -19,26 +19,27 @@ DEFAULT_PORT = int(os.getenv("PORT"))
 class Client():
     """ Initialize the client """
 
-    def __init__(self, host: str, port: int) -> None:
+    def __init__(self, host: str, port: int, topics: list) -> None:
 
         self.host = host
         self.port = port
+        self.topics = topics
 
         # Create socket with IPv4 address
         self._socket =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print(f"{colored('client started', 'blue')} (PID: {port}): listening on {host}:{port}...")
 
         # Establish a connection to the server
         self._socket.connect((host, port))
         print(f"{colored('connected to server', 'green')}: Hooray to server!")
 
-        package = {
-            'msg': "Hello World!",
-            'topic': "greeting"
-        }
+        # Subscribe
+        Message.initialize(
+            message = 'Hello World!',
+            topic = 'greeting'
+        ).send(port, self._socket)
 
-        self._socket.sendall('{"msg": "Hello World!", "topic": "greeting"}\n'.encode())
-
-        threading.Thread(target = self.receiver).start()
+        threading.Thread(target = self.listener).start()
 
 
     def send_data(self, data: str) -> None:
@@ -47,15 +48,15 @@ class Client():
         self._socket.sendall(data.encode())
     
 
-    def receiver(self):
-        """ Receiver thread for asynchronous communication """
+    def listener(self):
+        """ Listener thread for asynchronous communication """
 
         while True:
             data = self._socket.recv(BUFFER_SIZE).decode()
 
             if '\n' in data:
-                message = Message.receive(json.loads(data.strip()))
-                print(f"{colored('server broadcast', 'blue')}: {message.msg}")
+                message = Message(json.loads(data.strip()))
+                print(f"{colored('server broadcast', 'blue')}: {message.get('message')}")
     
 
 
@@ -63,10 +64,13 @@ class Client():
 if __name__ == '__main__':
 
     try:
-        _, host, port = sys.argv
+        args = sys.argv
+        host, post = args[1], args[2]
+        topics = args[4:]
     except:
         # If host and port are not specified, use the default values
         host = DEFAULT_HOST
         port = DEFAULT_PORT
+        topics = ['all']
 
-    client = Client(host, int(port))
+    client = Client(host, int(port), topics)
