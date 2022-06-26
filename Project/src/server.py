@@ -30,7 +30,8 @@ class Server():
 
         # Bind on the Host & Port, and start listening
         self._socket.bind((host, port))
-        self.listen()
+        print(f"{colored('server started.', 'blue')}: listening on {host}:{port}...")
+        self.listen()        
     
 
     def listen(self):
@@ -40,9 +41,7 @@ class Server():
         self._socket.listen()
 
         while True:
-            client, address = self._socket.accept()
-            host, pid = address
-
+            client, (host, pid) = self._socket.accept()
             print(f'{colored("client connected", "green")}: Hooray to {pid}!')
 
             # Add the client to the clients dictionary to keep track of
@@ -67,29 +66,36 @@ class Server():
         """
 
         while True:
-            try:
-                # Read package, decode and serialize
-                package = client.recv(BUFFER_SIZE).decode()
-                data = json.loads(package)                
-                print(f'{colored("package received", "blue")}: client {pid} sent "{data["msg"]}" (topic: "{data["topic"]}").')
+            
+            # Read package, decode and serialize
+            package = client.recv(BUFFER_SIZE).decode()
 
-                # Get list of client PIDs that are subscribed to the topic
-                subscribed_clients = [_pid for _pid in self.clients.keys() if _pid != pid and data['topic'] in self.clients[_pid]['topics']]
+            if package != '':
+                data = json.loads(package)
+                print(f'client {pid} sent: "{data["msg"]}" (topic: "{data["topic"]}").')
 
-                print(f' - The following clients are subscribed to this topic: {subscribed_clients}')
+                self.broadcaster(pid, data)
 
-                # Echo to clients that are subscribed to the topic
-                for sub_pid in subscribed_clients:
-                    print(f'  - sending message to client {sub_pid}:', end = ' ')
 
-                    try:
-                        self.clients[sub_pid]['socket'].sendall(data)
-                        print(f'{colored("success", "green")}')
-                    except:
-                        print(f'{colored("failed", "red")}')
-            except:
-                client.close()
-                return False
+    def broadcaster(self, sender_pid: int, data: dict):
+        """
+            Broadcast the data to all clients
+
+            Parameters:
+                sender_pid (int): The PID of the sender
+                data (str): The data to broadcast
+        """
+
+        # Interpret the data
+        message = Message.receive(data)
+
+        # list of client PIDs that are subscribed to the topic (except the sender himself)
+        subscribed_clients = [(pid, props['socket']) for pid, props in self.clients.items() if sender_pid != pid and message.topic in props['topics']]
+        print(f' - The following clients are subscribed to this topic: {[pid for pid, _ in subscribed_clients]}')
+
+        # broadcast the message to all subscribed clients
+        message.broadcast(subscribed_clients)
+
 
 
 

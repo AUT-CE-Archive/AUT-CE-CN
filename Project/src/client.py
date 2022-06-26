@@ -3,6 +3,7 @@ import sys
 import json
 import socket
 import threading
+from termcolor import colored
 from dotenv import load_dotenv
 
 from models import *
@@ -28,6 +29,7 @@ class Client():
 
         # Establish a connection to the server
         self._socket.connect((host, port))
+        print(f"{colored('connected to server', 'green')}: Hooray to server!")
 
         package = {
             'msg': "Hello World!",
@@ -45,25 +47,15 @@ class Client():
         self._socket.sendall(data.encode())
     
 
-    def process_data(self, data: str) -> None:
-        """ Processes the received data """
-        
-        data = json.loads(data)
-        print(data)
-    
-
     def receiver(self):
         """ Receiver thread for asynchronous communication """
 
-        data = ''
         while True:
-            chunk = self._socket.recv(BUFFER_SIZE).decode()
+            data = self._socket.recv(BUFFER_SIZE).decode()
 
-            if '#' in chunk:
-                self.process_data(data)
-                data = ''
-            
-            data += chunk
+            if '\n' in data:
+                message = Message.receive(json.loads(data.strip()))
+                print(f"{colored('server broadcast', 'blue')}: {message.msg}")
     
 
 
