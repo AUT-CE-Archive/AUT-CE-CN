@@ -5,7 +5,7 @@ from termcolor import colored
 from logger import logger
 
 
-class Base():
+class Base(object):
 
     def __init__(self, data: dict) -> None:
         '''
@@ -19,7 +19,21 @@ class Base():
     
 
     def get(self, field: str) -> str:
+        """ getter """
         return self.payload[field] if field in self.payload.keys() else None
+    
+
+    @logger(on_success = f'{colored("succeess", "green")}\n', on_failure = f'{colored("failed", "red")}\n')
+    def send(self, pid: int, socket: socket) -> None:
+        '''
+            Send the message to the given socket
+
+            parameters:
+                pid (int): the pid of the client
+                socket (socket): the socket to send the message to                
+        '''
+
+        socket.sendall(self.package)
     
 
     @property
@@ -30,7 +44,7 @@ class Base():
     @property
     def package(self) -> bytes:
         """ Encode the serialized payload """
-        return f'{str(self.serialized)}\n'.encode()    
+        return f'{str(self.serialized)}\n'.encode()
 
 
 
@@ -60,20 +74,6 @@ class Message(Base):
             'topic': topic,
             'type': 'message'
         })
-
-
-    @logger(on_success = f'{colored("succeess", "green")}\n', on_failure = f'{colored("failed", "red")}\n')
-    def send(self, pid: int, socket: socket) -> None:
-        '''
-            Send the message to the given socket
-
-            parameters:
-                pid (int): the pid of the client
-                socket (socket): the socket to send the message to                
-        '''
-
-        print(f' - sending message to {pid}', end = ': ')
-        socket.sendall(self.package)
     
 
     def broadcast(self, clients: dict) -> None:
@@ -86,8 +86,6 @@ class Message(Base):
 
         for pid, socket in clients:            
             self.send(pid, socket)
-
-        print('')
 
 
 
@@ -116,16 +114,3 @@ class Subscribe(Base):
             'topics': topics,
             'type': 'subscribe'
         })
-    
-
-    @logger(on_success = f'{colored("succeess", "green")}', on_failure = f'{colored("failed", "red")}')
-    def send(self, socket: socket) -> None:
-        '''
-            Send the message to the given socket
-
-            parameters:
-                socket (socket): the socket to send the message to
-        '''
-
-        print(f' - Subscribing on {", ".join(self.payload["topics"])}', end = ': ')
-        socket.sendall(self.package)

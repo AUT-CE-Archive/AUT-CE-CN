@@ -12,8 +12,8 @@ load_dotenv() # Load .env file
 
 # Environment variables (constants)
 BUFFER_SIZE = int(os.getenv("BUFFER_SIZE"))
-DEFAULT_HOST = os.getenv("HOST")
-DEFAULT_PORT = int(os.getenv("PORT"))
+HOST = os.getenv("HOST")
+PORT = int(os.getenv("PORT"))
 
 
 class Client():
@@ -33,10 +33,10 @@ class Client():
         self._socket.connect((host, port))
         print(f"{colored('connected to server', 'green')}: Hooray to server!")
 
-        # Subscribe
-        Message.initialize(
-            message = 'Hello World!',
-            topic = 'greeting'
+        # Subscribe to topics
+        print(f'subscribing to server({port}) on {", ".join(topics)}', end = ': ')
+        Subscribe.initialize(
+            topics = topics
         ).send(port, self._socket)
 
         threading.Thread(target = self.listener).start()
@@ -63,14 +63,4 @@ class Client():
 
 if __name__ == '__main__':
 
-    try:
-        args = sys.argv
-        host, post = args[1], args[2]
-        topics = args[4:]
-    except:
-        # If host and port are not specified, use the default values
-        host = DEFAULT_HOST
-        port = DEFAULT_PORT
-        topics = ['all']
-
-    client = Client(host, int(port), topics)
+    client = Client(HOST, PORT, sys.argv[1:])

@@ -12,8 +12,8 @@ load_dotenv() # Load .env file
 
 # Environment variables (constants)
 BUFFER_SIZE = int(os.getenv("BUFFER_SIZE"))
-DEFAULT_HOST = os.getenv("HOST")
-DEFAULT_PORT = int(os.getenv("PORT"))
+HOST = os.getenv("HOST")
+PORT = int(os.getenv("PORT"))
 
 
 class Server():
@@ -72,9 +72,13 @@ class Server():
 
             if package != '':
                 data = json.loads(package)
-                print(f'client {pid}: {data}.')
+                print(f'transmission from {pid}: {data}.')
 
-                self.broadcaster(pid, data)
+                if data['type'] == 'subscribe':
+                    self.clients[pid]['topics'] = data['topics']    # Set topics
+                    print(f' - subscribed to {", ".join(data["topics"])}.')
+                else:
+                    self.broadcaster(pid, data)
 
 
     def broadcaster(self, sender_pid: int, data: dict):
@@ -101,11 +105,4 @@ class Server():
 
 if __name__ == '__main__':
 
-    try:
-        _, host, port = sys.argv
-    except:
-        # If host and port are not specified, use the default values
-        host = DEFAULT_HOST
-        port = DEFAULT_PORT
-
-    server = Server(host, int(port))
+    server = Server(HOST, int(PORT))
