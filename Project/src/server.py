@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import json
 import socket
 import threading
@@ -14,6 +15,7 @@ load_dotenv() # Load .env file
 BUFFER_SIZE = int(os.getenv("BUFFER_SIZE"))
 HOST = os.getenv("HOST")
 PORT = int(os.getenv("PORT"))
+TIMEOUT = int(os.getenv('TIMEOUT'))
 
 
 class Server():
@@ -32,7 +34,7 @@ class Server():
         self._socket.bind((host, port))
         print(f"{colored(f'server started (PID: {port})', 'blue')}: listening on {host}:{port}...")
         self.listen()        
-    
+
 
     def listen(self):
         """ Constantly listen for incoming connections """
@@ -42,16 +44,55 @@ class Server():
 
         while True:
             client, (host, pid) = self._socket.accept()
-            print(f'{colored("client connected", "green")}: Hooray to {pid}!')
+            print(f'{colored(f"client {pid}", "white")}: {colored("connected", "green")}')
 
             # Add the client to the clients dictionary to keep track of
             self.clients[pid] = {
                 'socket': client,
                 'host': host,
-                'topics': ['greeting']
+                'topics': ['greeting'],
+                'pingpong': {
+                    'start': False,
+                    'last_ping': None,
+                    'count': 0,
+                    'pid': None
+                },
+                'connected': True
             }
 
-            threading.Thread(target = self.client_handler, args = (client, pid)).start()
+            threading.Thread(target = self.client_handler, args = (client, pid)).start()            
+            threading.Thread(target = self.ping_pong, args = ()).start()
+    
+
+    def ping_pong(self):
+
+        while True:
+            print(colored('Pinging clients...', 'magenta'))
+
+            for pid, props in self.clients.items():
+                
+                # Skip disconnected clients
+                if not self.clients[pid]['connected']: continue
+
+                # If not reply is received within the TIMEOUT, then increase COUNT
+                if self.clients[pid]['pingpong']['start'] and self.clients[pid]['pingpong']['last_ping'] - time.time() > TIMEOUT:
+                    self.clients[pid]['pingpong']['count'] += 1
+                    print(f"- {colored(f'client {pid}', 'yellow')}: ping-pong failed (count = {self.clients[pid]['pingpong']['count']})")
+                
+
+                # Disconnect the client if the COUNT is greater than 3
+                if self.clients[pid]['pingpong']['count'] == 3:
+                    self.clients[pid]['connected'] = False
+                    print(f"- {colored(f'client {pid}', 'red')}: diconnected [reason: ping-pong failed for 3 times]")
+
+                self.clients[pid]['pingpong']['last_ping'] = time.time() # Record time before sending ping
+                self.clients[pid]['pingpong']['start'] = True
+                
+                # Send the ping
+                print('- pinged the client:', pid, end = ' - ')
+                PingPong.initialize().send(pid, props['socket'])
+
+            time.sleep(TIMEOUT)
 
 
     def client_handler(self, client: socket.socket, pid: int):
@@ -66,39 +107,44 @@ class Server():
         """
 
         while True:
-            
+
             # Read package, decode and serialize
             package = client.recv(BUFFER_SIZE).decode()
 
             if package != '':
-                data = json.loads(package)
-                print(f'transmission from {pid}: {data}.')
+                for segment in [s for s in package.split('\n') if s != '']:
 
-                if data['type'] == 'subscribe':
-                    self.clients[pid]['topics'] = data['topics']    # Set topics
-                    print(f' - subscribed to {", ".join(data["topics"])}.')
-                else:
-                    self.broadcaster(pid, data)
+                    data = json.loads(segment)
+                    print(f'{colored(f"client {pid}", "white")}: {data}.')
 
+                    if data['type'] == 'subscribe':
+                        subscribe = Subscribe(data)
 
-    def broadcaster(self, sender_pid: int, data: dict):
-        """
-            Broadcast the data to all clients
+                        # Subscribe user to the topics
+                        self.clients[pid] = subscribe.to_topics(self.clients[pid])
 
-            Parameters:
-                sender_pid (int): The PID of the sender
-                data (str): The data to broadcast
-        """
+                        # Send acknowledgement
+                        subscribe.send_ack(pid, self.clients[pid]['socket'])
 
-        # Interpret the data
-        message = Message(data)
+                    elif data['type'] == 'message':
+                        message = Message(data)
 
-        # list of client PIDs that are subscribed to the topic (except the sender himself)
-        subscribed_clients = [(pid, props['socket']) for pid, props in self.clients.items() if sender_pid != pid and message.get('topic') in props['topics']]
-        print(f' - The following clients are subscribed to this topic: {[pid for pid, _ in subscribed_clients]}')
+                        # Send acknowledgement
+                        message.send_ack(pid, self.clients[pid]['socket'])
 
-        # broadcast the message to all subscribed clients
-        message.broadcast(subscribed_clients)
+                        # list of client PIDs that are subscribed to the topic (except the sender himself)
+                        subscribed_clients = [(_pid, props['socket']) for _pid, props in self.clients.items() if props['connected'] and _pid != pid and message.get('topic') in props['topics']]
+                        print(f'- The following clients are subscribed to this topic: {[_pid for _pid, _ in subscribed_clients]}. broadcasting now...')
+
+                        # broadcast the message to all subscribed clients
+                        message.broadcast(subscribed_clients)
+                    
+                    elif data['type'] == 'pingpong':
+                        pingpong = PingPong(data)
+
+                        if pingpong.get('kind') == 'pong':
+                            self.clients[pingpong.pid]['pingpong']['last_ping'] = time.time()   # Record time after receiving pong
+                            self.clients[pingpong.pid]['pingpong']['count'] = 0                 # Reset the COUNT
 
 
 

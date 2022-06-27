@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 import socket
 import threading
 from termcolor import colored
@@ -14,6 +15,7 @@ load_dotenv() # Load .env file
 BUFFER_SIZE = int(os.getenv("BUFFER_SIZE"))
 HOST = os.getenv("HOST")
 PORT = int(os.getenv("PORT"))
+TIMEOUT = int(os.getenv('TIMEOUT'))
 
 
 class Client():
@@ -24,6 +26,7 @@ class Client():
         self.host = host
         self.port = port
         self.topics = topics
+        self.await_ack_time = time.time()
 
         # Create socket with IPv4 address
         self._socket =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -31,32 +34,60 @@ class Client():
 
         # Establish a connection to the server
         self._socket.connect((host, port))
-        print(f"{colored('connected to server', 'green')}: Hooray to server!")
+        print(f"{colored(f'server', 'white')}: {colored('connected', 'green')}")
 
         # Subscribe to topics
-        print(f'subscribing to server({port}) on {", ".join(topics)}', end = ': ')
+        print(f'subscribing to server on {", ".join(topics)}', end = ': ')
         Subscribe.initialize(
             topics = topics
         ).send(port, self._socket)
+        self.await_ack_time = time.time()
 
         threading.Thread(target = self.listener).start()
+        threading.Thread(target = self.timeout).start()
+
+        while True:
+            # Read input from user
+            topic, message = [token.strip() for token in input('Write message to broadcast in format of TOPIC:MESSAGE: ').split(':')]
+
+            # Transmit message to server
+            print(f'transmitting message to server', end = ': ')
+            Message.initialize(
+                message = message,
+                topic = topic
+            ).send(port, self._socket)
+            self.await_ack_time = time.time()
 
 
-    def send_data(self, data: str) -> None:
-        """ Send some data to the server """
+    def timeout(self):
+        """ Timeout thread for asynchronous communication """
 
-        self._socket.sendall(data.encode())
+        while True:
+            if self.await_ack_time is not None and time.time() - self.await_ack_time > TIMEOUT:
+                print(f'{colored(f"server", "white")}:" {colored("timeout", "red")}')
+                sys.exit()
+            time.sleep(TIMEOUT)
+
     
-
     def listener(self):
         """ Listener thread for asynchronous communication """
 
         while True:
-            data = self._socket.recv(BUFFER_SIZE).decode()
+            package = self._socket.recv(BUFFER_SIZE).decode()
 
-            if '\n' in data:
-                message = Message(json.loads(data.strip()))
-                print(f"{colored('server broadcast', 'blue')}: {message.get('message')}")
+            if '\n' in package:
+                for segment in [s for s in package.split('\n') if s != '']:
+                    
+                    # Serialize
+                    data = json.loads(segment.strip())
+
+                    if data['type'] == 'acknowledgement':
+                        Ack(data).notify()
+                        self.await_ack_time = None
+
+                    elif data['type'] == 'message':
+                        Message(data).show_broadcast()                        
+                        
     
 
 
